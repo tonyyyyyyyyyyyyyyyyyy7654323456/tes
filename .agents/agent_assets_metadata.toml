@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "GDqi4hKjFExRBltinjPGi"
+uri = "file://tesla-invest.tar.gz"
+type = "unspecified"
+title = "Tesla Stock Investment — Full Source Code"

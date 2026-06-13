@@ -1,0 +1,990 @@
+# Tesla Stock Investment — Page-by-Page Build Prompts
+
+> Use each section as a standalone prompt. Every prompt assumes the shared foundation
+> (firebase.ts, firestore.ts, AuthContext, types/index.ts, hooks, Tailwind config) is already in place.
+> Figma palette is the law for every screen.
+
+---
+
+## DESIGN TOKENS (reference in every prompt)
+
+```
+Navy base bg:      #080c18   → bg-navy-base   (all dashboard pages)
+Navy card surface: #0d1426   → bg-navy-card
+Navy sidebar:      #060912   → bg-navy-sidebar
+Navy raised/hover: #111e35   → bg-navy-raised
+Accent blue:       #3b7bff   → text-accent / bg-accent
+Buy amber:         #f5a623   → bg-buy
+Gain green:        #22c55e   → text-gain
+Loss red:          #ef4444   → text-loss
+Chart cyan:        #06b6d4   → stroke on charts
+Border subtle:     rgba(255,255,255,0.07)  → border-white/[0.07]
+Border light:      rgba(255,255,255,0.13)  → border-white/[0.13]
+Text primary:      #ffffff
+Text secondary:    rgba(255,255,255,0.50)  → text-white/50
+Text muted:        rgba(255,255,255,0.28)  → text-white/30
+Public bg:         #F8F9FC   → bg-[#F8F9FC]
+Font:              TT Norms Pro, font-medium (600) is heaviest weight
+Letter-spacing:    -0.03em on headings
+```
+
+---
+
+## 00 — TAILWIND CONFIG + GLOBAL CSS + INDEX.HTML
+
+**Prompt:**
+
+Set up the Tailwind config at `tailwind.config.ts` with these exact custom tokens:
+
+```ts
+colors: {
+  navy: { base: '#080c18', card: '#0d1426', sidebar: '#060912', raised: '#111e35' },
+  accent: '#3b7bff',
+  buy: '#f5a623',
+  gain: '#22c55e',
+  loss: '#ef4444',
+  chart: '#06b6d4',
+},
+fontFamily: { sans: ['"TT Norms Pro"', 'system-ui', 'sans-serif'] },
+fontWeight: { normal: '400', medium: '600' },
+letterSpacing: { tight: '-0.03em', snug: '-0.015em' },
+maxWidth: { content: '88rem' },
+```
+
+In `src/index.css`, declare `@font-face` for TT Norms Pro at weights 400 and 600 pointing to `/fonts/tt-norms-pro-regular.woff2` and `/fonts/tt-norms-pro-semibold.woff2`. Apply `font-family: 'TT Norms Pro'` to `html, body, *`. Add utility classes:
+
+- `.num` → `font-variant-numeric: tabular-nums; letter-spacing: -0.01em`
+- `.card` → `bg-navy-card border border-white/[0.07] rounded-2xl`
+- `.badge-pending` → `text-xs px-2 py-0.5 rounded-full bg-yellow-400/10 text-yellow-400`
+- `.badge-approved` → `text-xs px-2 py-0.5 rounded-full bg-gain/10 text-gain`
+- `.badge-rejected` → `text-xs px-2 py-0.5 rounded-full bg-loss/10 text-loss`
+- `.btn-primary` → `bg-accent text-white rounded-full px-5 py-2.5 text-sm font-medium transition hover:bg-accent/90`
+- `.btn-ghost` → `border border-white/[0.13] text-white/70 rounded-full px-5 py-2.5 text-sm hover:bg-white/[0.05]`
+
+Add a `@keyframes price-up` and `price-down` that flash `#22c55e` and `#ef4444` then return to inherit over 0.8s. Apply via class on price elements when Firestore price updates arrive.
+
+In `index.html`, add the two `@font-face` declarations inside a `<style>` tag in `<head>` before any scripts. Set `<title>Tesla Stock Investment</title>`.
+
+---
+
+## 01 — APP SHELL + ROUTING (App.tsx + main.tsx)
+
+**Prompt:**
+
+Build `src/main.tsx` — wraps the app in `<BrowserRouter>`, `<AuthProvider>`, renders `<App />`.
+
+Build `src/App.tsx` — React Router v6 route tree:
+
+```
+/                  → <Landing />           (public)
+/login             → <Login />             (public, redirect to /dashboard if authed)
+/register          → <Register />          (public, redirect to /dashboard if authed)
+
+/dashboard         → <DashboardLayout />   (protected)
+  index            → <Dashboard />
+  /markets         → <Markets />
+  /markets/:symbol → <MarketDetail />
+  /wallet          → <Wallet />
+  /portfolio       → <Portfolio />
+  /profile         → <Profile />
+
+/admin             → <AdminLayout />       (protected + role === 'admin')
+  index            → <AdminDashboard />
+  /admin/users     → <AdminUsers />
+  /admin/users/:uid → <AdminUserDetail />
+  /admin/transactions → <AdminTransactions />
+```
+
+Create a `<ProtectedRoute>` wrapper that reads `{ currentUser, loading }` from `useAuth()`. While loading, renders a full-screen centered spinner (`<Loader2 className="animate-spin text-accent w-8 h-8" />`). If not authed, redirects to `/login`. 
+
+Create an `<AdminRoute>` wrapper that additionally checks `role === 'admin'`, redirects to `/dashboard` if not.
+
+Create a `<PublicRoute>` that redirects already-authed users to `/dashboard`.
+
+---
+
+## 02 — DASHBOARD LAYOUT (Sidebar + Topbar)
+
+**Prompt:**
+
+Build `src/components/layout/DashboardLayout.tsx`. This is the authenticated shell. Layout:
+
+```
+┌──────────┬──────────────────────────────────────┐
+│          │  TOPBAR (h-16)                        │
+│ SIDEBAR  ├──────────────────────────────────────┤
+│ (w-56)   │                                       │
+│          │  <Outlet />                            │
+│          │  (scrollable, py-8 px-8)               │
+│          │                                       │
+└──────────┴──────────────────────────────────────┘
+```
+
+**Sidebar (`src/components/layout/Sidebar.tsx`):**
+- `bg-navy-sidebar` fixed height, `flex flex-col`, `border-r border-white/[0.07]`
+- Top: Logo area — a circle with a bold "T" in accent blue, then text "Tesla Invest" in white `font-medium text-sm tracking-tight`
+- Nav items with `lucide-react` icons + labels. Items:
+  - `/dashboard` → `LayoutDashboard` icon, label "Dashboard"
+  - `/markets` → `BarChart2` icon, label "Markets"
+  - `/wallet` → `Wallet` icon, label "Wallet"
+  - `/portfolio` → `PieChart` icon, label "Portfolio"
+  - `/profile` → `UserCircle` icon, label "Profile"
+- Each nav item: `flex items-center gap-3 px-4 py-2.5 rounded-lg mx-3 text-sm text-white/50 hover:text-white hover:bg-navy-raised transition`
+- Active state (use `useMatch` from react-router): `bg-accent/10 text-accent font-medium`
+- Icon size: `w-4 h-4`
+- Bottom: user avatar (circle initials or photoURL), user name `text-xs text-white/50`, logout button (`LogOut` icon, `text-white/30 hover:text-white/70`)
+- Logout calls `signOut(auth)` then `navigate('/login')`
+
+**Topbar (`src/components/layout/Topbar.tsx`):**
+- `h-16 bg-navy-card/80 backdrop-blur-md border-b border-white/[0.07] flex items-center justify-between px-8`
+- Left: current page title (derive from pathname — "Dashboard", "Markets", etc.) — `text-white font-medium text-sm tracking-tight`
+- Right: 
+  - Balance pill: `bg-navy-raised border border-white/[0.07] rounded-full px-4 py-1.5 text-sm` showing `${ balance.available.toLocaleString() }` with a `Wallet` icon at left. Use `useBalance(uid)` hook with `onSnapshot`.
+  - User avatar circle: user initials or `<img>` if photoURL, `w-8 h-8 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center`
+
+---
+
+## 03 — LANDING PAGE (/)
+
+**Prompt:**
+
+Build `src/pages/Landing.tsx`. Public page, `bg-[#F8F9FC]`. Two-section layout:
+
+**NAVBAR:**
+- `bg-[#F8F9FC]/80 backdrop-blur border-b border-gray-100 sticky top-0 z-50`
+- Inner: `max-w-content mx-auto px-8 h-16 flex items-center justify-between`
+- Left: Logo (same T-circle as sidebar) + "Tesla Invest" in `text-gray-900 font-medium`
+- Right: `<Link to="/login">` as ghost pill (`border border-gray-300 text-gray-700 rounded-full px-5 py-2 text-sm hover:bg-gray-100`) + `<Link to="/register">` as filled accent pill (`bg-accent text-white rounded-full px-5 py-2 text-sm`)
+
+**HERO SECTION:**
+- Full-height (`min-h-[92vh]`) split layout — left content, right visual
+- Left half (`flex flex-col justify-center pl-8 md:pl-24 pr-8`):
+  - Eyebrow: `bg-accent/10 text-accent text-xs px-3 py-1 rounded-full inline-block mb-6` — "Live Prices · Real Orders · Instant Execution"
+  - H1: `text-[clamp(2.5rem,5vw,4.5rem)] font-medium leading-[1.05] tracking-tight text-gray-950` — "Invest in Tesla" on line 1, "& Top Assets" on line 2 in `text-accent`
+  - Subtext: `text-gray-500 text-lg mt-6 max-w-sm leading-relaxed` — "A live demo trading platform. Practice buying stocks and crypto with real market prices, no risk."
+  - CTA row (`mt-10 flex gap-3`): Primary "Start Trading" → `/register` (accent pill), Secondary "View Markets" → `/markets` (ghost pill)
+  - Stats row (`mt-14 flex gap-10`): 3 stats — "9 Assets", "Live Prices", "Instant Execution" — each as `text-2xl font-medium text-gray-950` above a `text-sm text-gray-400` label
+
+- Right half: A dark card (`bg-navy-base rounded-3xl` with `shadow-2xl shadow-navy-base/50`) containing a mini preview of the dashboard — mock price chart (static SVG or a small Recharts AreaChart with fake data), 3 rows of colored asset tickers with price and change %, and a "Buy TSLA" amber button. This is purely decorative/illustrative — hardcode fake data.
+
+**HOW IT WORKS (3-step):**
+- `bg-white border-t border-gray-100 py-24`
+- Heading centered: "How it works" in `text-3xl font-medium tracking-tight text-gray-950`
+- 3 columns with step number, icon, title, description:
+  1. "Fund your account" — deposit via admin-approved system
+  2. "Browse live assets" — stocks and crypto at real prices
+  3. "Execute orders" — buy/sell instantly, track portfolio
+
+**FOOTER:**
+- `bg-[#F8F9FC] border-t border-gray-100 py-10`
+- Logo + "© 2025 Tesla Stock Investment. Demo platform only."
+- Right: Login / Register links
+
+---
+
+## 04 — LOGIN PAGE (/login)
+
+**Prompt:**
+
+Build `src/pages/Login.tsx`. `bg-[#F8F9FC]` full-screen. Desktop: two-column layout. Mobile: single column (right side only).
+
+**Left column (hidden on mobile, `hidden md:flex`):**
+- Full height, `bg-[#080c18]` with a radial indigo gradient overlay: `background: radial-gradient(ellipse at 60% 40%, rgba(59,123,255,0.25) 0%, transparent 70%)`
+- Centered content:
+  - T-circle logo (white) + "Tesla Invest" in white `text-2xl font-medium tracking-tight`
+  - Tagline `text-white/50 text-sm mt-3 max-w-[220px] text-center leading-relaxed` — "Practice trading with live market data. No risk, real experience."
+  - Below: 3 mini trust signals (`CheckCircle` icon in `text-accent` + text in `text-white/60 text-xs`) — "Real-time Firestore prices", "Secure Firebase Auth", "Instant order execution"
+  - Abstract glowing orb (just a `div` with `w-64 h-64 rounded-full bg-accent/10 blur-3xl absolute`) for depth
+
+**Right column:**
+- `flex flex-col items-center justify-center bg-[#F8F9FC] px-8`
+- Centered form max-width `max-w-[380px] w-full`
+- Heading: `text-2xl font-medium tracking-tight text-gray-950 mb-1` — "Welcome back"
+- Subtext: `text-gray-500 text-sm mb-8` — "Sign in to your account"
+- Google button: `w-full flex items-center justify-center gap-2.5 border border-gray-200 rounded-full py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition` with inline Google SVG icon (colored, 18px)
+- Divider: `relative my-5` — horizontal line with "or" centered in `text-xs text-gray-400`
+- Email field: label `text-xs text-gray-500 mb-1.5` above `<input>` with `w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20`
+- Password field: same style + show/hide toggle (`Eye` / `EyeOff` lucide icon button inside the input)
+- Error message: `text-loss text-xs mt-1` — map Firebase error codes to human messages (e.g. `auth/wrong-password` → "Incorrect password", `auth/user-not-found` → "No account with that email")
+- Submit button: `w-full btn-primary py-3 mt-4` — "Sign in". Show `<Spinner>` inside button while loading, disable during request.
+- Footer link: `text-sm text-gray-500 mt-6 text-center` — "Don't have an account? [Create one →]" links to `/register`
+
+**Logic:**
+- `signInWithEmailAndPassword(auth, email, password)` on submit
+- Google: `signInWithPopup(auth, googleProvider)` then `ensureUserDoc(result.user)` then `navigate('/dashboard')`
+- `onAuthStateChanged` redirect if already logged in (wrap with `<PublicRoute>`)
+
+---
+
+## 05 — REGISTER PAGE (/register)
+
+**Prompt:**
+
+Build `src/pages/Register.tsx`. Identical two-column layout to Login. Left column: same dark indigo panel — change tagline to "Start your trading journey. Create a free account in seconds."
+
+**Right column differences:**
+- Heading: "Create account"
+- Subtext: "Join Tesla Stock Investment"
+- Fields (in order): Full name → Email → Country (text input, not select) → Password → Confirm password
+- All fields same style as Login
+- Validation before submit:
+  - Name: required, min 2 chars
+  - Email: valid format
+  - Country: required
+  - Password: min 8 chars
+  - Confirm: must match password
+  - Show field-level error below each invalid field in `text-loss text-xs mt-1`
+- Google button: same as login — "Continue with Google" creates account via `signInWithPopup` → `ensureUserDoc`
+- Submit: `createUserWithEmailAndPassword(auth, email, password)` → `updateProfile(auth.currentUser, { displayName: name })` → `createUserDoc(auth.currentUser, { name, country })` → `navigate('/dashboard')`
+- Footer: "Already have an account? [Sign in →]" → `/login`
+
+---
+
+## 06 — DASHBOARD HOME (/dashboard)
+
+**Prompt:**
+
+Build `src/pages/Dashboard.tsx`. First screen users see after login. Dark theme (`bg-navy-base`). Needs `useAuth`, `useBalance`, `useAssets`, `useHoldings`, `useTransactions` hooks.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────┐
+│  PORTFOLIO VALUE HERO (full width card)             │
+├──────────────────┬──────────────────────────────────┤
+│  BALANCE CARDS   │  PRICE CHART (TSLA sparkline)    │
+│  (1/3 width)     │  (2/3 width)                     │
+├──────────────────┴──────────────────────────────────┤
+│  TOP ASSETS (horizontal scroll row)                 │
+├──────────────────────────────────────────────────────┤
+│  RECENT TRANSACTIONS (last 5)                       │
+└─────────────────────────────────────────────────────┘
+```
+
+**PORTFOLIO VALUE HERO:**
+- `card p-8` wide card
+- Left: Label `text-white/50 text-xs tracking-widest uppercase` — "Total Portfolio Value"
+- Big number: sum of `balance.total` + computed value of all holdings (units × currentPrice from priceMap). Format as `${ value.toLocaleString('en-US', {minimumFractionDigits:2}) }` in `text-4xl font-medium tracking-tight num`
+- Below: Portfolio P&L since avg buy — if positive `text-gain`, if negative `text-loss` — show `+$X.XX (+X.XX%)`
+- Right side: two mini stats — "Available" and "Invested" in `text-sm text-white/50` above values
+
+**BALANCE CARDS (3 cards in a stack):**
+- Available Balance: value in `text-xl font-medium num text-white`, label `text-white/50 text-xs`
+- Locked (pending withdrawal): value in `text-yellow-400`
+- Total Deposited: value in `text-white`
+- Each card: `card p-5` with a colored `w-1 h-8 rounded-full` left accent bar (green for available, yellow for locked, white/30 for total)
+- Quick action buttons at bottom: `[Deposit]` (accent) `[Withdraw]` (ghost) — both `Link` to `/wallet`
+
+**PRICE CHART:**
+- `card p-6`
+- Header row: "TSLA" in `font-medium`, current price from `priceMap['TSLA']?.currentPrice`, `<PriceChange value={change24h} />`, and a "View →" link to `/markets/TSLA`
+- Recharts `AreaChart` — 200px height, fake 30-point historical sparkline (generate on mount with random walk seeded from current price). `stroke="#06b6d4"`, `strokeWidth=2`, gradient fill from `rgba(6,182,212,0.15)` to transparent. No axes labels, no tooltip — pure visual. `ResponsiveContainer width="100%" height={160}`
+
+**TOP ASSETS ROW:**
+- Heading: "Top Assets" `text-sm font-medium text-white`  
+- Horizontal scroll row `flex gap-3 overflow-x-auto pb-2 scrollbar-none`
+- Each asset from `assets[]`: small card `bg-navy-raised border border-white/[0.07] rounded-xl p-4 flex-shrink-0 w-44`
+  - Asset symbol `text-sm font-medium`, name `text-xs text-white/50`
+  - Price `text-base num mt-2`, change `<PriceChange value={change24h} className="text-xs" />`
+  - Mini bar at bottom (just a static colored line) — green if change > 0, red if < 0
+
+**RECENT TRANSACTIONS:**
+- Heading row: "Recent Activity" + "View all →" link to `/wallet`
+- Last 5 transactions from `useTransactions(uid, 5)`
+- Each row: `flex items-center justify-between py-3 border-b border-white/[0.05]`
+  - Left: type icon (`ArrowDownCircle` green for deposit, `ArrowUpCircle` red/gray for withdrawal) + type label `text-sm text-white` + date `text-xs text-white/40`
+  - Right: amount `num text-sm` + `<StatusBadge status={tx.status} />`
+- If 0 transactions: `<EmptyState message="No transactions yet. Make your first deposit." />`
+
+---
+
+## 07 — MARKETS LIST (/markets)
+
+**Prompt:**
+
+Build `src/pages/Markets.tsx`. Real-time asset list using `useAssets()` (onSnapshot). Dark theme.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────┐
+│  PAGE HEADER + FILTER TABS + SEARCH                 │
+├─────────────────────────────────────────────────────┤
+│  ASSETS TABLE (live, full width)                    │
+└─────────────────────────────────────────────────────┘
+```
+
+**PAGE HEADER:**
+- `text-2xl font-medium tracking-tight text-white mb-6` — "Markets"
+- Subtext `text-white/40 text-sm` — "Live prices updated every 10 seconds"
+
+**FILTER + SEARCH ROW:**
+- Left: pill tab group `bg-navy-raised rounded-xl p-1 flex gap-1`
+  - Tabs: "All" · "Stocks" · "Crypto" — active tab `bg-accent text-white rounded-lg px-4 py-1.5 text-sm`, inactive `text-white/50 px-4 py-1.5 text-sm hover:text-white`
+  - Filter by `asset.type`
+- Right: search input `bg-navy-raised border border-white/[0.07] rounded-lg px-4 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-accent/50 w-56`
+  - `<Search className="w-4 h-4 text-white/30" />` icon inside (absolute positioned)
+  - Filter assets by `symbol.includes(search) || name.includes(search)` (case insensitive)
+
+**ASSETS TABLE:**
+- `card overflow-hidden`
+- Table header: `grid grid-cols-[2fr_1fr_1fr_1fr_auto] items-center px-6 py-3 border-b border-white/[0.07] text-xs text-white/40 uppercase tracking-wider`
+  - Columns: "Asset" · "Price" · "24h Change" · "Type" · "Trade"
+- Each asset row:
+  - `grid grid-cols-[2fr_1fr_1fr_1fr_auto] items-center px-6 py-4 border-b border-white/[0.05] hover:bg-navy-raised/50 cursor-pointer transition`
+  - Click anywhere on row → `navigate('/markets/:symbol')`
+  - **Asset cell**: colored circle icon (first letter of name, bg based on type — `bg-accent/20 text-accent` for stock, `bg-purple-500/20 text-purple-400` for crypto) `w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium` + right of it: symbol `text-sm font-medium text-white` above name `text-xs text-white/40`
+  - **Price cell**: `num text-sm text-white` `${ price }` with price-flash animation class toggled when price changes (compare previous vs current in useRef)
+  - **24h Change cell**: `<PriceChange value={change24h} showIcon />`
+  - **Type cell**: `<AssetTypeBadge type={asset.type} />`
+  - **Trade cell**: `bg-accent/10 text-accent text-xs px-3 py-1.5 rounded-lg hover:bg-accent hover:text-white transition` — "Trade"
+
+- Loading state: 9 skeleton rows — `animate-pulse bg-navy-raised rounded h-4 w-full`
+- Empty (filtered): `<EmptyState message="No assets match your search." />`
+
+---
+
+## 08 — MARKET DETAIL (/markets/:symbol)
+
+**Prompt:**
+
+Build `src/pages/MarketDetail.tsx`. Uses `useParams` to get `:symbol`. Subscribes to `doc(db, 'assets', symbol)` via `onSnapshot` for live price. Also fetches user's holding for this symbol and their orders.
+
+**Layout:**
+```
+┌──────────────────────────────┬─────────────────────┐
+│  ASSET HEADER + CHART        │  TRADE PANEL        │
+│  (2/3 width)                 │  (1/3 width)        │
+├──────────────────────────────┴─────────────────────┤
+│  ORDER HISTORY (this symbol, this user)            │
+└─────────────────────────────────────────────────────┘
+```
+
+**ASSET HEADER:**
+- Back link: `← Markets` with `ChevronLeft` icon, `text-white/40 text-sm hover:text-white`
+- Asset name row: colored circle icon (same as markets list) + `text-2xl font-medium tracking-tight text-white` symbol + full name `text-white/50 text-sm`
+- Price row: `text-4xl font-medium num tracking-tight text-white mt-2` current price + `<PriceChange value={change24h} className="text-lg" showIcon />` + `text-white/30 text-sm` "24h change"
+- Live indicator: blinking green dot `w-2 h-2 rounded-full bg-gain animate-pulse` + `text-xs text-white/40` "Live"
+- Type badge + price source badge (`text-xs bg-navy-raised px-2 py-0.5 rounded text-white/40` — "Finnhub" or "Simulated")
+
+**PRICE CHART:**
+- `card p-6 mt-6`
+- Time tabs: `1H · 1D · 1W · 1M` — cosmetic only (generate different random walk data per tab). Active: `text-accent border-b border-accent pb-1`
+- Recharts `AreaChart` height 280px — `stroke="#06b6d4"` `strokeWidth={2}`. Gradient fill `rgba(6,182,212,0.12)` → transparent. 
+- X-axis: `text-xs text-white/30 fill-current` time labels. Y-axis: price labels, `text-xs text-white/30`.
+- `CartesianGrid` with `stroke="rgba(255,255,255,0.05)"`.
+- Custom `Tooltip` — dark bg `bg-navy-raised border border-white/[0.13] rounded-lg p-3 text-sm text-white num`.
+- Generate ~60 data points of random walk seeded from currentPrice when `symbol` or time tab changes.
+
+**TRADE PANEL (sticky right column):**
+- `card p-6`
+- **Your holding** (if exists): `bg-navy-raised rounded-xl p-4 mb-5` — "You own" `text-xs text-white/50` + `{ holding.units } units` `text-white font-medium` + avg buy price `text-xs text-white/40`
+- **Buy/Sell toggle**: `bg-navy-base rounded-xl p-1 flex mb-5`
+  - Buy tab: `flex-1 py-2 rounded-lg text-sm font-medium transition` — active: `bg-buy text-navy-base`, inactive: `text-white/50`
+  - Sell tab: active: `bg-loss text-white`, inactive: `text-white/50`
+- **Units input**: label `text-xs text-white/50 mb-2` "Number of units" + `<input type="number" min="0.0001" step="0.0001">` styled same as search — `bg-navy-raised border border-white/[0.13] rounded-lg px-4 py-3 text-white num text-sm w-full`
+- **Order summary**: `bg-navy-raised rounded-xl p-4 my-4 space-y-2`
+  - "Price per unit" → `${ currentPrice } num text-sm`
+  - "Total cost" → `${ (units * price).toFixed(2) } text-white font-medium num`
+  - For sell: "You'll receive" instead of "Total cost"
+- **Available balance**: `text-xs text-white/40` "Available: ${ balance.available }"
+- **Submit button**: full width, `py-3 rounded-xl text-sm font-medium`. If buy: `bg-buy text-navy-base hover:bg-buy/90`. If sell: `bg-loss text-white hover:bg-loss/90`. Shows Spinner during transaction.
+- **Error**: `text-loss text-xs mt-2` (insufficient balance, not enough units, etc.)
+- Call `placeBuyOrder` or `placeSellOrder` from `lib/firestore.ts`.
+- Success: show `bg-gain/10 border border-gain/20 text-gain text-sm rounded-lg p-3` confirmation toast that auto-dismisses after 3s.
+
+**ORDER HISTORY (this symbol):**
+- `card mt-6 p-6`
+- Heading "Your Orders — {symbol}" `text-sm font-medium text-white mb-4`
+- Query: `orders` collection `where('userId','==',uid)` `where('symbol','==',symbol)` `orderBy('createdAt','desc')` `limit(20)`
+- Table: date · side badge · units · price at order · total
+- Each row: `flex gap-6 py-3 border-b border-white/[0.05] text-sm`
+- Empty: `<EmptyState message="No orders for this asset yet." />`
+
+---
+
+## 09 — WALLET (/wallet)
+
+**Prompt:**
+
+Build `src/pages/Wallet.tsx`. This page uses `useBalance(uid)` and `useTransactions(uid)` — both real-time `onSnapshot`. Two main sections: balance overview + action forms, and transaction history.
+
+**Layout:**
+```
+┌──────────────────────┬──────────────────────────────┐
+│  BALANCE CARDS       │  DEPOSIT / WITHDRAW FORM     │
+│  (3 stacked cards)   │  (tabbed, right side)         │
+├──────────────────────┴──────────────────────────────┤
+│  TRANSACTION HISTORY (live, paginated)              │
+└─────────────────────────────────────────────────────┘
+```
+
+**BALANCE CARDS (left column, `flex flex-col gap-4`):**
+- **Available** card: `card p-6`
+  - Icon: `Banknote` in `text-gain` inside `bg-gain/10 w-10 h-10 rounded-xl flex items-center justify-center`
+  - Label `text-xs text-white/50 uppercase tracking-wider mt-4` — "Available Balance"
+  - Value `text-3xl font-medium num text-white mt-1` — `${ balance.available }`
+  - Subtext `text-xs text-white/30` — "Ready to trade or withdraw"
+- **Locked** card: `card p-6`
+  - Icon: `Lock` in `text-yellow-400` inside `bg-yellow-400/10 w-10 h-10 rounded-xl`
+  - Label — "Locked (Pending)"
+  - Value in `text-yellow-400`
+  - Subtext — "Awaiting admin approval"
+- **Total** card: `card p-6`
+  - Icon: `TrendingUp` in `text-accent`
+  - Label — "Total Deposited"
+  - Value in `text-white`
+
+**DEPOSIT / WITHDRAW TABS (right column):**
+- `card p-6`
+- Tab toggle (same pill style as markets filter): "Deposit" · "Withdraw"
+- **Deposit form**:
+  - Amount input: `$` prefix inside input wrapper, number input. Min $10.
+  - Payment note / reference textarea: `text-sm text-white/70 bg-navy-raised border border-white/[0.07] rounded-lg p-3 resize-none h-24 w-full` — placeholder "Add payment reference or proof of transfer details"
+  - Info box `bg-accent/5 border border-accent/20 rounded-xl p-4 text-sm text-white/60 flex gap-3`: `<Info className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />` "Your deposit request will be reviewed and approved by our team, typically within 24 hours."
+  - Submit: `btn-primary w-full py-3` — "Request Deposit"
+  - On submit: call `createDepositRequest(uid, userName, amount, note)` → show success banner
+- **Withdraw form**:
+  - Amount input (same style). Max = `balance.available`.
+  - Warning if amount > available: `text-loss text-xs` "Amount exceeds available balance"
+  - Withdrawal note textarea: placeholder "Add your wallet address or bank details for the payout"
+  - Warning box `bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-4` with `AlertTriangle` icon — "Funds will be locked immediately upon request and released after admin review."
+  - Submit: `btn-primary w-full py-3 bg-yellow-500 hover:bg-yellow-400 text-navy-base` — "Request Withdrawal"
+  - On submit: call `createWithdrawalRequest(uid, userName, amount, note)`. If insufficient balance, show `text-loss` error.
+  - Both forms show `<Spinner>` on submit button while loading, then clear on success.
+
+**TRANSACTION HISTORY:**
+- Heading row: "Transaction History" + count badge `bg-navy-raised text-white/50 text-xs px-2 py-0.5 rounded-full`
+- Filter tabs: "All" · "Deposits" · "Withdrawals" · "Pending"
+- Table `card overflow-hidden mt-4`:
+  - Header: Type · Amount · Status · Note · Date — `text-xs text-white/40 uppercase tracking-wider`
+  - Each row:
+    - Type: icon (`ArrowDownCircle` green for deposit, `ArrowUpCircle` amber for withdrawal) + `text-sm text-white capitalize`
+    - Amount: `num text-sm text-white font-medium` `+${ amount }` (green for deposit) / `-${ amount }` (red for withdrawal)
+    - Status: `<StatusBadge status={tx.status} />`
+    - Note: `text-xs text-white/40 truncate max-w-[180px]`
+    - Date: `text-xs text-white/40` formatted as "Jun 13, 2025 · 14:32"
+  - Each row `grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-4 px-6 py-4 border-b border-white/[0.05] hover:bg-navy-raised/40`
+- Empty: `<EmptyState message="No transactions yet. Make your first deposit above." />`
+- Skeleton loader: 5 rows of `animate-pulse bg-navy-raised h-4 rounded` while loading
+
+---
+
+## 10 — PORTFOLIO (/portfolio)
+
+**Prompt:**
+
+Build `src/pages/Portfolio.tsx`. Uses `useHoldings(uid)`, `useAssets()`, `useBalance(uid)`.
+
+**Layout:**
+```
+┌──────────────────────────────────────────────────────┐
+│  SUMMARY BAR (total value, total P&L, allocation)   │
+├──────────────┬───────────────────────────────────────┤
+│  ALLOCATION  │  HOLDINGS TABLE (right, 2/3)          │
+│  DONUT CHART │                                       │
+│  (1/3)       │                                       │
+└──────────────┴───────────────────────────────────────┘
+```
+
+**SUMMARY BAR:**
+- `card p-6 mb-6 flex gap-8 flex-wrap`
+- 4 stats in a row:
+  1. "Portfolio Value" — sum of (holding.units × priceMap[symbol]?.currentPrice) in `text-2xl font-medium num`
+  2. "Total P&L" — (current value - invested cost). Color `text-gain` or `text-loss`. Show `+$X.XX (X.XX%)`
+  3. "Cash Available" — `balance.available` from useBalance
+  4. "Holdings" — count of holdings `{ holdings.length } assets`
+- Below each label in `text-xs text-white/40 uppercase tracking-wider`
+
+**ALLOCATION CHART (left column):**
+- `card p-6`
+- Heading: "Allocation" `text-sm font-medium text-white mb-4`
+- Recharts `PieChart` with `Pie` (no labels on slices, `innerRadius={55}` `outerRadius={90}`, `dataKey="value"`)
+  - Each slice: one per holding. Colors: generate from a palette array — accent blue, cyan, purple, amber, emerald, rose...
+  - Center label: total portfolio value in `text-sm num`
+- Legend below: list of `flex items-center gap-2 text-xs text-white/60` — colored dot + symbol + percentage of total
+- Use `ResponsiveContainer width="100%" height={220}`
+- If no holdings: `<EmptyState message="No positions yet. Go to Markets to start trading." />`
+
+**HOLDINGS TABLE (right column, 2/3):**
+- `card overflow-hidden`
+- Header: `grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto]` — Asset · Units · Avg Buy · Current Price · Value · P&L
+- Each holding row:
+  - **Asset**: circle icon + symbol `text-sm font-medium text-white` + name `text-xs text-white/40`
+  - **Units**: `num text-sm text-white`
+  - **Avg Buy**: `num text-sm text-white/60` `${ holding.avgBuyPrice }`
+  - **Current Price**: `num text-sm text-white` from `priceMap[symbol]?.currentPrice` with price-flash animation on change
+  - **Value**: `num text-sm text-white` `units × currentPrice`
+  - **P&L**: `(currentPrice - avgBuyPrice) × units` formatted. Color `text-gain` or `text-loss`. Show both absolute (`+$X.XX`) and percent (`+X.XX%`) stacked in two lines of `text-xs`
+  - Row click → `navigate('/markets/:symbol')`
+  - Row: `grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] items-center px-6 py-4 border-b border-white/[0.05] hover:bg-navy-raised/40 cursor-pointer`
+- Empty state + button to Markets
+
+---
+
+## 11 — PROFILE (/profile)
+
+**Prompt:**
+
+Build `src/pages/Profile.tsx`. Uses `useAuth()` for `currentUser + userDoc`. Allows photo upload (Firebase Storage), name/country update, password change.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────┐
+│  PROFILE HEADER (avatar + name + email)             │
+├───────────────────┬─────────────────────────────────┤
+│  PERSONAL INFO    │  SECURITY (change password)     │
+│  FORM (left)      │  PANEL (right)                  │
+└───────────────────┴─────────────────────────────────┘
+```
+
+**PROFILE HEADER:**
+- `card p-8 mb-6 flex items-center gap-6`
+- Avatar: large `w-20 h-20 rounded-full` — if `currentUser.photoURL` shows `<img>`, else initials circle `bg-accent/20 text-accent text-2xl font-medium`
+- Photo upload: hidden `<input type="file" accept="image/*">` triggered by `<button>` overlaid on avatar — `Camera` icon `bg-navy-raised rounded-full p-2` absolutely positioned bottom-right of avatar circle
+  - On file select: `uploadBytes(ref(storage, 'avatars/${uid}'), file)` → `getDownloadURL` → `updateProfile(auth.currentUser, { photoURL })` → `updateUserProfile(uid, { photoURL })` → update local state
+  - Show progress ring while uploading
+- Right of avatar: `text-xl font-medium text-white tracking-tight` name + `text-sm text-white/40` email + `text-xs text-white/30 mt-1` "Member since {formatted date}"
+- Top-right: `<StatusBadge>` style badge for role — `bg-accent/10 text-accent text-xs px-3 py-1 rounded-full` "Investor"
+
+**PERSONAL INFO FORM (left):**
+- `card p-6`
+- Heading: "Personal Information" `text-sm font-medium text-white mb-6`
+- Fields: Full Name + Country — same input style (gray border, rounded-lg, dark bg)
+- Email field: read-only `opacity-50 cursor-not-allowed` with a `Lock` icon inset. Note `text-xs text-white/30 mt-1` "Email cannot be changed"
+- Save button: `btn-primary` — "Save changes"
+- On save: `updateUserProfile(uid, { name, country })` → toast "Profile updated"
+- Toast: `fixed bottom-6 right-6 bg-navy-raised border border-white/[0.13] rounded-xl px-5 py-3 text-sm text-white flex items-center gap-2` with `CheckCircle2` icon in `text-gain`, auto-dismiss 3s
+
+**SECURITY PANEL (right):**
+- `card p-6`
+- Heading: "Security" `text-sm font-medium text-white mb-6`
+- If Google OAuth user (check `currentUser.providerData[0].providerId === 'google.com'`): show info box `bg-navy-raised rounded-xl p-4 flex gap-3 text-sm text-white/50` with `Shield` icon — "You signed in with Google. Password management is handled by Google."
+- If email/password user:
+  - Current Password input
+  - New Password input (min 8 chars)
+  - Confirm New Password input
+  - Submit: `bg-accent btn-primary` — "Update password"
+  - Logic: `reauthenticateWithCredential(currentUser, credential)` then `updatePassword(currentUser, newPassword)`
+  - Error mapping: `auth/wrong-password` → "Current password is incorrect"
+
+---
+
+## 12 — ADMIN LAYOUT (shared admin shell)
+
+**Prompt:**
+
+Build `src/components/layout/AdminLayout.tsx`. Separate from DashboardLayout — admins get their own sidebar. Same dark navy palette. Sidebar items:
+
+- `/admin` → `LayoutDashboard` "Overview"
+- `/admin/users` → `Users` "Users"
+- `/admin/transactions` → `CreditCard` "Transactions"
+
+Add an "ADMIN" eyebrow label at top of sidebar in `text-[10px] tracking-[0.2em] text-accent/60 uppercase px-4 mb-4` before nav items.
+
+Bottom: same user avatar + logout as dashboard layout.
+
+Topbar: same component reused. Badge top-right shows pending transaction count — live `onSnapshot(query(transactions, where('status','==','pending')))` → `bg-loss text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center` badge on "Transactions" nav item.
+
+---
+
+## 13 — ADMIN DASHBOARD (/admin)
+
+**Prompt:**
+
+Build `src/pages/admin/AdminDashboard.tsx`. Overview of the whole platform. One-time `getDocs` queries (refresh on mount).
+
+**Layout:**
+```
+┌──────────────────────────────────────────────────────┐
+│  STATS ROW (4 big number cards)                     │
+├──────────────────┬───────────────────────────────────┤
+│  PENDING TXS     │  RECENT SIGNUPS                  │
+│  (live list)     │  (user list)                     │
+└──────────────────┴───────────────────────────────────┘
+```
+
+**STATS ROW:**
+4 `card p-6` cards in a grid:
+1. **Total Users** — `getDocs(collection(db,'users'))`.length. Icon: `Users` in `text-accent`
+2. **Pending Transactions** — live count via `onSnapshot`. `text-yellow-400`. Icon: `Clock`
+3. **Total AUM** — sum of all `balances/{uid}.total`. Icon: `DollarSign` in `text-gain`
+4. **Today's Volume** — sum of orders created today. Icon: `Activity` in `text-purple-400`
+
+Each card: icon in colored pill, label `text-xs text-white/40 uppercase tracking-wider`, big number `text-3xl font-medium num text-white mt-2`, subtle change indicator.
+
+**PENDING TRANSACTIONS (live):**
+- `card p-6`
+- Heading "Needs Action" + yellow count badge
+- `onSnapshot(query(transactions, where('status','==','pending'), orderBy('createdAt','desc')))` 
+- Each row `flex items-center justify-between py-3 border-b border-white/[0.05]`:
+  - Left: type icon + user name `text-sm text-white` + amount `text-white/50 num text-xs`
+  - Right: `badge-pending` + "Review →" link to `/admin/transactions`
+- Max 5 rows, then "View all pending →" link
+
+**RECENT SIGNUPS:**
+- `card p-6`
+- `getDocs(query(users, orderBy('createdAt','desc'), limit(8)))`
+- Each row: initials avatar circle + name `text-sm text-white` + email `text-xs text-white/40` + joined date `text-xs text-white/30` + link to `/admin/users/:uid`
+- Empty: `<EmptyState message="No users yet." />`
+
+---
+
+## 14 — ADMIN USERS (/admin/users)
+
+**Prompt:**
+
+Build `src/pages/admin/AdminUsers.tsx`. Lists all registered users. `getDocs(collection(db,'users'))` on mount, refreshes on manual click.
+
+**Layout:** full-width card table.
+
+**HEADER ROW:**
+- Page title "Users" + total count in `text-white/40 text-sm`
+- Right: search input (filter client-side by name/email) + refresh button `<RefreshCw>` icon
+
+**TABLE:**
+- `card overflow-hidden`
+- Column headers: `grid grid-cols-[2fr_2fr_1fr_1fr_1fr]` — Name · Email · Role · Balance · Joined
+- Each user row:
+  - **Name**: initials circle + name `text-sm text-white` — click → `navigate('/admin/users/:uid')`
+  - **Email**: `text-sm text-white/60`
+  - **Role**: badge — admin = `bg-accent/10 text-accent`, user = `bg-white/5 text-white/50`
+  - **Balance**: fetch each user's balance total (batch: `getDocs` of balances collection, build a map). `num text-sm text-white`
+  - **Joined**: formatted date `text-xs text-white/40`
+  - Right end: `ChevronRight` icon `text-white/20`
+- Full row: `grid grid-cols-[2fr_2fr_1fr_1fr_1fr_auto] px-6 py-4 border-b border-white/[0.05] hover:bg-navy-raised/50 cursor-pointer`
+- Skeleton while loading, empty state if no users
+
+---
+
+## 15 — ADMIN USER DETAIL (/admin/users/:uid)
+
+**Prompt:**
+
+Build `src/pages/admin/AdminUserDetail.tsx`. Shows everything about one user. Uses `useParams` to get `:uid`.
+
+On mount: fetch `users/:uid`, `balances/:uid`, query `transactions where userId == uid`, query `holdings/:uid/assets`.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────┐
+│  ← Back   USER PROFILE CARD                        │
+├─────────────────┬───────────────────────────────────┤
+│  BALANCE CARDS  │  TRANSACTION HISTORY (this user) │
+└─────────────────┴───────────────────────────────────┘
+│  HOLDINGS (this user's positions)                   │
+└─────────────────────────────────────────────────────┘
+```
+
+**USER PROFILE CARD:**
+- `card p-6 mb-6`
+- Avatar circle (large, initials) + name `text-xl font-medium` + email `text-white/50 text-sm` + country `text-white/30 text-xs` + joined date
+- Right: role badge + "Change role" button (toggle user/admin — `updateDoc(users/:uid, { role })`)
+
+**BALANCE CARDS:** Same 3-card layout as wallet page (read-only view — no deposit/withdraw forms)
+
+**TRANSACTION HISTORY:**
+- `card p-6`
+- Query `transactions where userId == uid orderBy createdAt desc limit 50`
+- Same table as wallet but add admin columns: "Admin Note" (show if exists)
+- Include approve/reject action buttons inline — same logic as Admin Transactions page
+
+**HOLDINGS:**
+- `card p-6 mt-6`
+- getDocs of `holdings/:uid/assets`
+- Same table as Portfolio page but with live prices from `useAssets()` priceMap
+
+---
+
+## 16 — ADMIN TRANSACTIONS (/admin/transactions)
+
+**Prompt:**
+
+Build `src/pages/admin/AdminTransactions.tsx`. The core admin workflow page. Real-time `onSnapshot` on transactions collection.
+
+**FILTER BAR:**
+- Pill tabs: "All" · "Pending" · "Deposits" · "Withdrawals" · "Approved" · "Rejected"
+- Search by user name
+- Sort by: "Newest" · "Oldest" · "Highest Amount" · "Lowest Amount"
+
+**TRANSACTION TABLE:**
+- `card overflow-hidden`
+- Columns: `grid grid-cols-[2fr_1fr_1fr_1fr_2fr_auto]`
+  - **User**: initials circle + name `text-sm text-white` + link icon to `/admin/users/:uid`
+  - **Type**: icon + label
+  - **Amount**: `num text-white font-medium`
+  - **Status**: `<StatusBadge>`
+  - **Note**: `text-xs text-white/40 truncate` (user's note)
+  - **Actions**: context-aware buttons
+
+**ACTION BUTTONS (rightmost column):**
+- If `status === 'pending'` AND `type === 'deposit'`:
+  - `[✓ Approve]` → green small pill button → opens inline `adminNote` input + confirm
+  - `[✗ Reject]` → red small pill
+- If `status === 'pending'` AND `type === 'withdrawal'`:
+  - Same Approve / Reject
+- If `status !== 'pending'`: show admin note in `text-xs text-white/30 italic` — no buttons
+
+**APPROVE/REJECT INLINE FLOW:**
+- When Approve or Reject clicked, that row expands (or a small inline section appears below it):
+  - `bg-navy-raised rounded-xl p-4 mt-2`
+  - `<textarea>` "Admin note (optional)" `text-sm text-white/70 bg-navy-base border border-white/[0.07] rounded-lg p-3 resize-none h-16 w-full`
+  - `[Confirm Approve]` (green pill) or `[Confirm Reject]` (red pill) + `[Cancel]` ghost
+  - On confirm: call appropriate `adminApprove*` / `adminReject*` from `lib/firestore.ts`
+  - Show spinner on confirm button, collapse row on success
+  - The onSnapshot listener will update the row's status badge in real time
+
+---
+
+## 17 — EXPRESS PRICE POLLING SERVER (server/index.ts)
+
+**Prompt:**
+
+Build `server/index.ts`. Node.js + Express + node-cron. Uses Firebase Admin SDK to write to Firestore. Uses `node-fetch` to call Finnhub API.
+
+**Dependencies:**
+```
+express, cors, node-cron, node-fetch, firebase-admin, dotenv
+```
+
+**Initialization:**
+```ts
+import * as admin from 'firebase-admin'
+admin.initializeApp({
+  credential: admin.credential.applicationDefault(),
+  projectId: process.env.FIREBASE_PROJECT_ID,
+})
+const db = admin.firestore()
+```
+
+**Finnhub-tracked symbols:**
+```ts
+const FINNHUB_STOCKS = ['TSLA']
+const FINNHUB_CRYPTO = ['BTC', 'ETH', 'SOL', 'BNB']
+// Finnhub crypto format: BINANCE:BTCUSDT, BINANCE:ETHUSDT, etc.
+const CRYPTO_MAP: Record<string, string> = {
+  BTC: 'BINANCE:BTCUSDT',
+  ETH: 'BINANCE:ETHUSDT',
+  SOL: 'BINANCE:SOLUSDT',
+  BNB: 'BINANCE:BNBUSDT',
+}
+```
+
+**Seeded assets (random walk):**
+```ts
+const SEEDED: Record<string, { name: string; price: number; type: string }> = {
+  SPACEX: { name: 'SpaceX', price: 185.40, type: 'stock' },
+  GDAWN:  { name: 'Golden Dawn', price: 42.75, type: 'stock' },
+  APG:    { name: 'APG', price: 67.20, type: 'stock' },
+  USDT:   { name: 'Tether', price: 1.00, type: 'crypto' },
+}
+```
+
+**Price functions:**
+
+`fetchFinnhubStock(symbol: string)`:
+- `GET https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}`
+- Returns `{ c: currentPrice, dp: percentChange }` — extract `c` and `dp`
+
+`fetchFinnhubCrypto(symbol: string)`:
+- `GET https://finnhub.io/api/v1/quote?symbol={CRYPTO_MAP[symbol]}&token={FINNHUB_API_KEY}`
+- Returns same format
+
+`simulatePrice(current: number)`:
+- Random walk: `current * (1 + (Math.random() - 0.5) * 0.004)`
+- Never drift more than ±15% from original seed in a session
+- USDT always returns exactly 1.00
+
+**Poll function (runs every 10 seconds via `node-cron`):**
+```
+cron.schedule('*/10 * * * * *', async () => {
+  // 1. Fetch all Finnhub stocks
+  // 2. Fetch all Finnhub cryptos
+  // 3. Simulate seeded assets
+  // 4. Batch write to Firestore assets/{symbol}
+  const batch = db.batch()
+  // ... set each doc
+  await batch.commit()
+  console.log(`[${new Date().toISOString()}] Prices updated`)
+})
+```
+
+**HTTP server:**
+- `GET /health` → `{ status: 'ok', timestamp, lastUpdate }` — useful for uptime monitoring on Render
+- `GET /prices` → returns current in-memory price cache as JSON (for debugging)
+- Listen on `PORT || 3001`
+
+**Error handling:**
+- If Finnhub returns 429 (rate limit) or network error, log error and skip that symbol — don't crash the cron
+- Keep previous price in memory if fetch fails
+
+---
+
+## 18 — SEED SCRIPTS
+
+### scripts/seedAssets.ts
+
+**Prompt:**
+
+Build `scripts/seedAssets.ts`. Runs once with `npx ts-node --esm scripts/seedAssets.ts`. Uses Firebase Admin SDK.
+
+Initialize Admin SDK the same as server/index.ts. Then:
+
+```ts
+const assets = [
+  { symbol: 'TSLA',   name: 'Tesla Inc.',   type: 'stock',  priceSource: 'finnhub', currentPrice: 0, change24h: 0 },
+  { symbol: 'SPACEX', name: 'SpaceX',       type: 'stock',  priceSource: 'seeded',  currentPrice: 185.40, change24h: 0 },
+  { symbol: 'GDAWN',  name: 'Golden Dawn',  type: 'stock',  priceSource: 'seeded',  currentPrice: 42.75, change24h: 0 },
+  { symbol: 'APG',    name: 'APG',          type: 'stock',  priceSource: 'seeded',  currentPrice: 67.20, change24h: 0 },
+  { symbol: 'BTC',    name: 'Bitcoin',      type: 'crypto', priceSource: 'finnhub', currentPrice: 0, change24h: 0 },
+  { symbol: 'ETH',    name: 'Ethereum',     type: 'crypto', priceSource: 'finnhub', currentPrice: 0, change24h: 0 },
+  { symbol: 'SOL',    name: 'Solana',       type: 'crypto', priceSource: 'finnhub', currentPrice: 0, change24h: 0 },
+  { symbol: 'BNB',    name: 'BNB',          type: 'crypto', priceSource: 'finnhub', currentPrice: 0, change24h: 0 },
+  { symbol: 'USDT',   name: 'Tether',       type: 'crypto', priceSource: 'seeded',  currentPrice: 1.00, change24h: 0 },
+]
+```
+
+Use `db.batch()` to `set` each doc at `assets/{symbol}` with `{ ...asset, updatedAt: admin.firestore.FieldValue.serverTimestamp() }`.
+
+After commit: `console.log('✅ Seeded 9 assets')` then `process.exit(0)`.
+
+---
+
+### scripts/seedAdmin.ts
+
+**Prompt:**
+
+Build `scripts/seedAdmin.ts`. Creates the admin user record in Firestore.
+
+Accept `adminUid` as `process.argv[2]`. If not provided, log instructions:
+```
+Usage: npx ts-node --esm scripts/seedAdmin.ts <firebase-uid>
+Get the UID from Firebase Console → Authentication → Users
+```
+
+Then:
+```ts
+await db.collection('users').doc(adminUid).set({
+  name: 'Admin',
+  email: 'admin@teslastockinvestment.com',
+  photoURL: '',
+  country: 'Global',
+  role: 'admin',
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+})
+await db.collection('balances').doc(adminUid).set({
+  available: 0, locked: 0, total: 0,
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+})
+console.log(`✅ Admin seeded for UID: ${adminUid}`)
+process.exit(0)
+```
+
+---
+
+## 19 — FIRESTORE SECURITY RULES
+
+**Prompt:**
+
+Create `firestore.rules` at project root. Rules:
+
+```js
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{uid} {
+      allow read, update: if request.auth.uid == uid || isAdmin();
+      allow create: if request.auth != null;
+    }
+
+    match /balances/{uid} {
+      allow read: if request.auth.uid == uid;
+      allow read, write: if isAdmin();
+    }
+
+    match /transactions/{txId} {
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth.uid == resource.data.userId;
+      allow read, update: if isAdmin();
+    }
+
+    match /holdings/{uid}/assets/{symbol} {
+      allow read, write: if request.auth.uid == uid;
+    }
+
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth.uid == resource.data.userId || isAdmin();
+    }
+
+    match /assets/{symbol} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /watchlists/{uid} {
+      allow read, write: if request.auth.uid == uid;
+    }
+  }
+}
+```
+
+---
+
+## 20 — README.md
+
+**Prompt:**
+
+Build `README.md` with these sections:
+
+1. **Project Overview** — what this is, demo platform, Firebase-powered
+2. **Tech Stack** — React/TS/Vite, Firebase Auth/Firestore/Storage, Finnhub, Express
+3. **Prerequisites** — Node 18+, Firebase project, Finnhub free tier API key
+4. **Setup: Firebase**
+   - Create Firebase project
+   - Enable Email/Password + Google in Auth providers
+   - Create Firestore database (production mode)
+   - Download service account JSON → save as `service-account.json` in root (gitignore this)
+   - Deploy `firestore.rules`
+5. **Setup: Environment Variables** — copy `.env.example` → `.env`, fill all VITE_ vars from Firebase console. Fill `FINNHUB_API_KEY` from finnhub.io.
+6. **Install + Run Frontend** — `npm install` → `npm run dev`
+7. **Run Price Polling Server** — `npm run server` (separate terminal). Runs on port 3001. Needs `service-account.json` in root.
+8. **Seed Assets** — `npm run seed:assets` (run once after Firebase setup)
+9. **Seed Admin User**
+   - Go to Firebase Console → Auth → Add user manually: `admin@teslastockinvestment.com` / `Admin@1234`
+   - Copy the UID from the user list
+   - Run: `npm run seed:admin <uid>`
+10. **Admin Credentials** — email: `admin@teslastockinvestment.com` pass: `Admin@1234`
+11. **Fonts** — Place `tt-norms-pro-regular.woff2` and `tt-norms-pro-semibold.woff2` in `public/fonts/`. Licensed from TypeType.
+12. **Project Structure** — directory tree
+13. **Feature Notes** — all balance writes use `runTransaction`, real-time via `onSnapshot`, price polling every 10s
+
+---
+
+## BUILD ORDER RECOMMENDATION
+
+```
+1.  00 — Tailwind config + global CSS + index.html
+2.  01 — App shell + routing (App.tsx, ProtectedRoute)
+3.  02 — Dashboard layout (Sidebar + Topbar)
+4.  12 — Admin layout
+5.  03 — Landing page
+6.  04 — Login page
+7.  05 — Register page
+8.  06 — Dashboard home
+9.  07 — Markets list
+10. 08 — Market detail + trade panel
+11. 09 — Wallet
+12. 10 — Portfolio
+13. 11 — Profile
+14. 13 — Admin dashboard
+15. 14 — Admin users list
+16. 15 — Admin user detail
+17. 16 — Admin transactions
+18. 17 — Express server
+19. 18 — Seed scripts
+20. 19 — Firestore rules
+21. 20 — README
+```
