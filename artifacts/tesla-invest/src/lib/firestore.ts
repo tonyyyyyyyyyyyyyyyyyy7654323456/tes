@@ -359,3 +359,16 @@ export async function deactivatePriceAlert(uid: string, alertId: string) {
     triggeredAt: serverTimestamp(),
   })
 }
+
+export async function getCryptoAddresses(): Promise<Record<string, string> | null> {
+  const snap = await getDoc(doc(db, 'config', 'cryptoAddresses'))
+  if (!snap.exists()) return null
+  return snap.data() as Record<string, string>
+}
+
+export async function saveCryptoAddresses(addresses: Record<string, string>) {
+  await setDoc(doc(db, 'config', 'cryptoAddresses'), {
+    ...addresses,
+    updatedAt: serverTimestamp(),
+  })
+}

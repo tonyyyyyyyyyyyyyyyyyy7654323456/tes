@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Banknote, Lock, TrendingUp, Info, AlertTriangle, ArrowDownCircle, ArrowUpCircle } from 'lucide-react'
+import { Banknote, Lock, TrendingUp, Info, AlertTriangle, ArrowDownCircle, ArrowUpCircle, Bitcoin } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useBalance } from '../hooks/useBalance'
 import { useTransactions } from '../hooks/useTransactions'
@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/ui/StatusBadge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Spinner } from '../components/ui/Spinner'
 import { Toast } from '../components/ui/Toast'
+import { CryptoDeposit } from '../components/ui/CryptoDeposit'
 import { PageTransition } from '../components/ui/PageTransition'
 
 function fmt(n: number) {
@@ -19,13 +20,15 @@ function formatDate(d: Date | null) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(d)
 }
 
+type MainTab = 'deposit' | 'crypto' | 'withdraw'
+
 export function Wallet() {
   const { currentUser, userDoc } = useAuth()
   const uid = currentUser?.uid
   const balance = useBalance(uid)
   const txs = useTransactions(uid)
 
-  const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit')
+  const [tab, setTab] = useState<MainTab>('deposit')
   const [txFilter, setTxFilter] = useState<'all' | 'deposit' | 'withdrawal' | 'pending'>('all')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -76,12 +79,19 @@ export function Wallet() {
     return tx.type === txFilter
   })
 
+  const mainTabs: { key: MainTab; label: string; icon?: React.ReactNode }[] = [
+    { key: 'deposit', label: 'Bank / Wire', icon: <Banknote className="w-3.5 h-3.5" /> },
+    { key: 'crypto', label: 'Crypto', icon: <Bitcoin className="w-3.5 h-3.5" /> },
+    { key: 'withdraw', label: 'Withdraw', icon: <ArrowUpCircle className="w-3.5 h-3.5" /> },
+  ]
+
   return (
     <PageTransition>
       <div className="space-y-6">
         {toast && <Toast message={toast} type="success" onClose={() => setToast('')} />}
 
         <div className="grid grid-cols-3 gap-6">
+          {/* Balance cards */}
           <div className="flex flex-col gap-4">
             {[
               {
@@ -111,84 +121,129 @@ export function Wallet() {
             ))}
           </div>
 
+          {/* Main tab panel */}
           <div className="col-span-2 card p-6">
-            <div className="bg-navy-raised rounded-xl p-1 flex gap-1 mb-6 w-fit">
-              {(['deposit', 'withdraw'] as const).map((t) => (
+            {/* Tab switcher */}
+            <div className="bg-navy-raised rounded-xl p-1 flex gap-1 mb-6">
+              {mainTabs.map((t) => (
                 <button
-                  key={t}
-                  onClick={() => { setTab(t); setError(''); setAmount(''); setNote('') }}
-                  className={`px-5 py-2 text-sm rounded-lg capitalize transition ${
-                    tab === t ? 'bg-accent text-white' : 'text-white/50 hover:text-white'
+                  key={t.key}
+                  onClick={() => { setTab(t.key); setError(''); setAmount(''); setNote('') }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm rounded-lg transition ${
+                    tab === t.key ? 'bg-accent text-white' : 'text-white/50 hover:text-white'
                   }`}
                 >
-                  {t}
+                  {t.icon}
+                  {t.label}
                 </button>
               ))}
             </div>
 
-            <div className="max-w-md space-y-4">
-              <div>
-                <label className="text-xs text-white/50 mb-2 block">Amount (USD)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="bg-navy-raised border border-white/[0.07] rounded-lg pl-8 pr-4 py-3 text-white text-sm w-full focus:outline-none focus:border-accent/50 num"
+            {/* Crypto tab */}
+            {tab === 'crypto' && (
+              <CryptoDeposit onSuccess={(msg) => setToast(msg)} />
+            )}
+
+            {/* Bank/Wire deposit tab */}
+            {tab === 'deposit' && (
+              <div className="max-w-md space-y-4">
+                <div>
+                  <label className="text-xs text-white/50 mb-2 block">Amount (USD)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="bg-navy-raised border border-white/[0.07] rounded-lg pl-8 pr-4 py-3 text-white text-sm w-full focus:outline-none focus:border-accent/50 num"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-white/50 mb-2 block">Payment reference / proof of transfer</label>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Add payment reference or proof of transfer details"
+                    className="text-sm text-white/70 bg-navy-raised border border-white/[0.07] rounded-lg p-3 resize-none h-24 w-full focus:outline-none focus:border-accent/50 placeholder-white/30"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="text-xs text-white/50 mb-2 block">
-                  {tab === 'deposit' ? 'Payment reference / proof of transfer' : 'Wallet address or bank details'}
-                </label>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={tab === 'deposit'
-                    ? 'Add payment reference or proof of transfer details'
-                    : 'Add your wallet address or bank details for the payout'}
-                  className="text-sm text-white/70 bg-navy-raised border border-white/[0.07] rounded-lg p-3 resize-none h-24 w-full focus:outline-none focus:border-accent/50 placeholder-white/30"
-                />
-              </div>
-
-              {tab === 'deposit' ? (
                 <div className="bg-accent/5 border border-accent/20 rounded-xl p-4 flex gap-3">
                   <Info className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-white/60">
                     Your deposit request will be reviewed and approved by our team, typically within 24 hours.
                   </p>
                 </div>
-              ) : (
+
+                {error && <p className="text-loss text-xs">{error}</p>}
+
+                <button
+                  onClick={handleDeposit}
+                  disabled={loading}
+                  className="w-full btn-primary py-3 flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {loading && <Spinner size={14} />}
+                  Request Deposit
+                </button>
+              </div>
+            )}
+
+            {/* Withdraw tab */}
+            {tab === 'withdraw' && (
+              <div className="max-w-md space-y-4">
+                <div>
+                  <label className="text-xs text-white/50 mb-2 block">Amount (USD)</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="bg-navy-raised border border-white/[0.07] rounded-lg pl-8 pr-4 py-3 text-white text-sm w-full focus:outline-none focus:border-accent/50 num"
+                    />
+                  </div>
+                  {parseFloat(amount) > balance.available && (
+                    <p className="text-loss text-xs mt-1">Amount exceeds available balance</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs text-white/50 mb-2 block">Wallet address or bank details</label>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Add your wallet address or bank details for the payout"
+                    className="text-sm text-white/70 bg-navy-raised border border-white/[0.07] rounded-lg p-3 resize-none h-24 w-full focus:outline-none focus:border-accent/50 placeholder-white/30"
+                  />
+                </div>
+
                 <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-4 flex gap-3">
                   <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-white/60">
                     Funds will be locked immediately upon request and released after admin review.
                   </p>
                 </div>
-              )}
 
-              {error && <p className="text-loss text-xs">{error}</p>}
+                {error && <p className="text-loss text-xs">{error}</p>}
 
-              <button
-                onClick={tab === 'deposit' ? handleDeposit : handleWithdraw}
-                disabled={loading}
-                className={`w-full py-3 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition disabled:opacity-60 ${
-                  tab === 'deposit'
-                    ? 'btn-primary'
-                    : 'bg-yellow-500 hover:bg-yellow-400 text-navy-base'
-                }`}
-              >
-                {loading && <Spinner size={14} />}
-                {tab === 'deposit' ? 'Request Deposit' : 'Request Withdrawal'}
-              </button>
-            </div>
+                <button
+                  onClick={handleWithdraw}
+                  disabled={loading}
+                  className="w-full bg-yellow-500 hover:bg-yellow-400 text-navy-base py-3 rounded-full text-sm font-medium flex items-center justify-center gap-2 transition disabled:opacity-60"
+                >
+                  {loading && <Spinner size={14} />}
+                  Request Withdrawal
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Transaction history */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">

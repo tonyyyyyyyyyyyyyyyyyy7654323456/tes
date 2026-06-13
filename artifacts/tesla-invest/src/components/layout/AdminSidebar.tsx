@@ -1,5 +1,5 @@
 import { useMatch, useNavigate, Link } from 'react-router-dom'
-import { LayoutDashboard, Users, CreditCard, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, LogOut, Settings } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/admin', icon: LayoutDashboard, label: 'Overview', exact: true },
   { to: '/admin/users', icon: Users, label: 'Users', exact: false },
   { to: '/admin/transactions', icon: CreditCard, label: 'Transactions', exact: false },
+  { to: '/admin/config', icon: Settings, label: 'Configuration', exact: false },
 ]
 
 function NavItem({

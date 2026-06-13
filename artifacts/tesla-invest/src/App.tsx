@@ -17,6 +17,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard'
 import { AdminUsers } from './pages/admin/AdminUsers'
 import { AdminUserDetail } from './pages/admin/AdminUserDetail'
 import { AdminTransactions } from './pages/admin/AdminTransactions'
+import { AdminConfig } from './pages/admin/AdminConfig'
 
 function LoadingScreen({ bg = 'bg-navy-base' }: { bg?: string }) {
   return (
@@ -71,6 +72,7 @@ function AnimatedRoutes() {
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/users/:uid" element={<AdminUserDetail />} />
           <Route path="/admin/transactions" element={<AdminTransactions />} />
+          <Route path="/admin/config" element={<AdminConfig />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
