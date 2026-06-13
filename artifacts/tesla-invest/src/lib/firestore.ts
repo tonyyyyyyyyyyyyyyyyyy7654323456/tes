@@ -352,3 +352,10 @@ export async function addPriceAlert(uid: string, symbol: string, type: 'above' |
 export async function removePriceAlert(uid: string, alertId: string) {
   await deleteDoc(doc(db, 'alerts', uid, 'items', alertId))
 }
+
+export async function deactivatePriceAlert(uid: string, alertId: string) {
+  await updateDoc(doc(db, 'alerts', uid, 'items', alertId), {
+    active: false,
+    triggeredAt: serverTimestamp(),
+  })
+}
